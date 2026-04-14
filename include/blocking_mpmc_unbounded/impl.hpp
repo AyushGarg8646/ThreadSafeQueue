@@ -12,14 +12,11 @@ void tsfqueue::__impl::blocking_mpmc_unbounded<T>::push(T value)
     static_assert(std::is_copy_constructible_v<T> ||
                       std::is_move_constructible_v<T>,
                   "T must be copyable or movable to be pushed into the queue.");
-    // Created the shared pointer of "value" 
+    // Created the shared pointer of "value"
     std::shared_ptr<T> shared_ptr_for_value =
         std::make_shared<T>(std::move(value));
-    
-    std::unique_ptr<node> new_tail_unqptr = std::make_unique<node>();
 
-   
-    
+    std::unique_ptr<node> new_tail_unqptr = std::make_unique<node>();
 
     // Lock on Producer Thread
     std::lock_guard<std::mutex> tail_mutex_lock(tail_mutex);
@@ -34,8 +31,7 @@ void tsfqueue::__impl::blocking_mpmc_unbounded<T>::push(T value)
         // Increase size
         std::lock_guard<std::mutex> guard_size_mutex(size_mutex);
         size_q++;
-    } 
-    
+    }
 
     // Notify any waiting threads in "wait_and_pop" to wake up and pop.
     cond.notify_one();
@@ -44,7 +40,8 @@ void tsfqueue::__impl::blocking_mpmc_unbounded<T>::push(T value)
 }
 
 template <typename T>
-queue<T>::node *tsfqueue::__impl::blocking_mpmc_unbounded<T>::get_tail() {
+queue<T>::node *tsfqueue::__impl::blocking_mpmc_unbounded<T>::get_tail()
+{
     std::lock_guard<std::mutex> tail_lock(tail_mutex);
     return tail;
 }
@@ -53,19 +50,62 @@ template <typename T>
 std::unique_ptr<queue<T>::node> queue<T>::wait_and_get() {}
 
 template <typename T>
-std::unique_ptr<queue<T>::node> queue<T>::try_get() {}
+std::unique_ptr<typename tsfqueue::__impl::blocking_mpmc_unbounded<T>::node> tsfqueue::__impl::blocking_mpmc_unbounded<T>::try_get()
+{
+    std::lock_guard<std::mutex> guard_head_mutex(head_mutex);
+    if (size() > 0)
+    {
+        std::unique_ptr<node> out_node = std::move(head);
+        head = std::move(out_node->next);
+
+        std::lock_guard<std::mutex> guard_size_mutex(size_mutex);
+        size_q--;
+
+        return std::move(out_node); // gives ownership to the the caller function
+    }
+
+    return nullptr;
+}
+
+template <typename T>
+bool tsfqueue::__impl::blocking_mpmc_unbounded<T>::try_pop(T &value)
+{
+
+    static_assert(std::is_copy_assignable_v<T> || std::is_move_assignable_v<T>,
+                  "T must be copy-assignable or move-assignable to be popped and placed into a reference.");
+
+    std::unique_ptr<node> removed_node = try_get(); // gets deleted when it goes out of scope
+    if (removed_node == nullptr)
+    {
+        return false;
+    }
+    else
+    {
+        value = *(removed_node->data); // copying the value to the reference passed in
+
+        return true;
+    }
+}
+
+template <typename T>
+std::shared_ptr<T> tsfqueue::__impl::blocking_mpmc_unbounded<T>::try_pop()
+{
+    std::unique_ptr<node> removed_node = try_get(); //..
+    if (removed_node == nullptr)
+    {
+        return nullptr;
+    }
+    else
+    {
+        return removed_node->data;
+    }
+}
 
 template <typename T>
 void queue<T>::wait_and_pop(T &value) {}
 
 template <typename T>
 std::shared_ptr<T> queue<T>::wait_and_pop() {}
-
-template <typename T>
-bool queue<T>::try_pop(T &value) {}
-
-template <typename T>
-std::shared_ptr<T> queue<T>::try_pop() {}
 
 template <typename T>
 bool queue<T>::empty() {}
