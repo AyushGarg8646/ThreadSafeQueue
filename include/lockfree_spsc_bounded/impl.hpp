@@ -16,10 +16,33 @@ bool tsfqueue::__impl::lockfree_spsc_bounded<T, Capacity>::try_push(T value)
 }
 
 template <typename T, size_t Capacity>
-bool queue<T, Capacity>::try_pop(T &value) {}
+bool tsfqueue::__impl::lockfree_spsc_bounded<T, Capacity>::try_pop(T &value)
+{
+    size_t current_head = head.load(std::memory_order_acquire);
+    if (tail_cache == current_head)
+    {
+        tail_cache = tail.load(std::memory_order_acquire);
+        if (tail_cache == current_head) //false if the queue is still empty after updating the tail cache
+            return false;
+    }
+
+    value = std::move(arr[current_head]);
+    head.store((current_head + 1) % capacity, std::memory_order_release);
+    return true;
+}
 
 template <typename T, size_t Capacity>
-void queue<T, Capacity>::wait_and_pop(T &value) {}
+void tsfqueue::__impl::lockfree_spsc_bounded<T, Capacity>::wait_and_pop(T &value)
+{
+    size_t current_head = head.load(std::memory_order_acquire);
+    while (tail_cache == current_head)//waiting till the q is empty 
+    {
+        tail_cache = tail.load(std::memory_order_acquire); 
+    }
+
+    value = std::move(arr[current_head]);
+    head.store((current_head + 1) % capacity, std::memory_order_release);
+}
 
 template <typename T, size_t Capacity>
 bool queue<T, Capacity>::peek(T &value) {}
