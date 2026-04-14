@@ -38,22 +38,17 @@ private:
   // functions Why static ?? Why constexpr ?? [Reason this]
   static_assert(Capacity > 0, "Capacity must be a strictly positive integer.");
 
-  static_assert(Capacity < std::numeric_limits<size_t>::max() - 1,
-                "Capacity exceeds safe limits: risk of numeric overflow.");
+static_assert(Capacity < std::numeric_limits<size_t>::max() - 1,"Capacity exceeds safe limits: risk of numeric overflow.");
 
-  static_assert(std::is_default_constructible<T>::value,
-                "Type T lacks a default constructor, which is necessary for internal array initialization.");
+static_assert(std::is_default_constructible<T>::value, "Type T lacks a default constructor, which is necessary for internal array initialization.");
 
-  static_assert(std::is_move_assignable<T>::value ||
-                    std::is_copy_assignable<T>::value,
-                "Type T requires valid copy or move assignment semantics.");
+static_assert(std::is_move_assignable<T>::value ||std::is_copy_assignable<T>::value,"Type T requires valid copy or move assignment semantics.");
 
-  static_assert(std::is_destructible<T>::value, "Type T requires a valid, non-deleted destructor.");
+static_assert(std::is_destructible<T>::value, "Type T requires a valid, non-deleted destructor.");
 
-  static_assert(std::atomic<size_t>::is_always_lock_free, "Native lock-free support for std::atomic<size_t> is required on this platform.");
+static_assert(std::atomic<size_t>::is_always_lock_free, "Native lock-free support for std::atomic<size_t> is required on this platform.");
 
-  static_assert(alignof(std::atomic<size_t>) <= cache_line_size,
-              "Atomic alignment exceeds the specified cache line size, risking inefficiency.");
+static_assert(alignof(std::atomic<size_t>) <= cache_line_size, "Atomic alignment exceeds the specified cache line size, risking inefficiency.");
 public:
   // Public Member functions :
   // Add appropriate constructors and destructors -> Add here only
