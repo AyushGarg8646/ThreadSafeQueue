@@ -140,8 +140,45 @@ template <typename T> std::shared_ptr<T> tsfqueue::__impl::blocking_mpmc_unbound
   return front_node->data;
 }
 
+
 template <typename T>
-bool tsfqueue::__impl::blocking_mpmc_unbounded<T>::empty() {}
+template <typename... Args>
+void tsfqueue::__impl::blocking_mpmc_unbounded<T>::emplace_back(Args &&...args) {
+  
+  std::unique_ptr<node> new_tail_unique_ptr = std::make_unique<node>();
+
+  //(Perfect forwarding)
+  std::shared_ptr<T> shared_ptr_for_value =
+      std::make_shared<T>(std::forward<Args>(args)...);
+
+  // Get exclusive axcess [Do it aftere non-critical tasks]
+  std::lock_guard<std::mutex> guard_tail_mutex(tail_mutex);
+
+  tail->data = std::move(shared_ptr_for_value);
+  tail->next = std::move(new_tail_unique_ptr);
+
+  // change the tail.
+  tail = tail->next.get();
+
+  // Increment size
+  std::lock_guard<std::mutex> guard_size_mutex(size_mutex);
+  size_q++;
+
+  return;
+}
+
+template <typename T>
+bool tsfqueue::__impl::blocking_mpmc_unbounded<T>::empty() {
+    std::lock_guard<std::mutex> lock_size(size_mutex);
+
+  return (size_q == 0);
+}
+
+template <typename T> size_t tsfqueue::__impl::blocking_mpmc_unbounded<T>::size() {
+    std::lock_guard<std::mutex> lock_size(size_mutex);
+  
+    return size_q;
+  }
 
 #endif
 
