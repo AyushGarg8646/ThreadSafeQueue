@@ -20,14 +20,13 @@ template <typename T, size_t Capacity> class lockfree_spsc_bounded {
   // code but not wait-free variant. Thus, the user is given a choice to choose
   // among the preferred endpoints as per use case.
 private:
-  // Add the private members :
-  // std::atomic<size_t> head;
-  // std::atomic<size_t> tail;
-  // size_t head_cache;
-  // size_t tail_cache;
-  // T arr[];
-  // static constexpr size_t capacity;
-
+  alignas(cache_line_size) std::atomic<size_t> head;
+  alignas(cache_line_size) size_t tail_cache;
+  alignas(cache_line_size) std::atomic<size_t> tail;
+  alignas(cache_line_size) size_t head_cache;
+  static constexpr size_t capacity = Capacity + 1;
+  alignas(cache_line_size) T arr[capacity];
+  // aligned the start of the array too
   // Description of private members :
   // 1. std::atomic<size_t> head is the atomic head pointer
   // 2. std::atomic<size_t> tail is the atomic tail pointer
@@ -37,18 +36,45 @@ private:
   // Cache align 1-5.
   // 6. static constexpr size_t capcity to store the capcity for operations in
   // functions Why static ?? Why constexpr ?? [Reason this]
+  static_assert(Capacity > 0, "Capacity must be a strictly positive integer.");
 
+  static_assert(Capacity < std::numeric_limits<size_t>::max() - 1,
+                "Capacity exceeds safe limits: risk of numeric overflow.");
+
+  static_assert(std::is_default_constructible<T>::value,
+                "Type T lacks a default constructor, which is necessary for internal array initialization.");
+
+  static_assert(std::is_move_assignable<T>::value ||
+                    std::is_copy_assignable<T>::value,
+                "Type T requires valid copy or move assignment semantics.");
+
+  static_assert(std::is_destructible<T>::value, "Type T requires a valid, non-deleted destructor.");
+
+  static_assert(std::atomic<size_t>::is_always_lock_free, "Native lock-free support for std::atomic<size_t> is required on this platform.");
+
+  static_assert(alignof(std::atomic<size_t>) <= cache_line_size,
+              "Atomic alignment exceeds the specified cache line size, risking inefficiency.");
 public:
   // Public Member functions :
   // Add appropriate constructors and destructors -> Add here only
+  lockfree_spsc_bounded() : head(0), tail(0), head_cache(0), tail_cache(0) {}
+  ~lockfree_spsc_bounded() = default;
   // 1. void wait_and_push(value) : Busy wait until element is pushed
+  void wait_and_push(T);
   // 2. bool try_push(value) : Try to push if not full else leave (returns false
   // if could not push else true)
+  bool try_push(T);
   // 3. void wait_and_pop(value ref) : Busy wait until we have atmost 1 elt and
+  void wait_and_pop(T &);
   // then pop it and store in reference
   // 4. bool try_pop(value ref) : Try to pop and return false if failed bool
+  bool try_pop(T &);
   // 5. empty(void) : Checks if the queue is empty and return bool
+  bool empty() const;
   // 6. bool peek(value ref) : Peek the top of the queue.
+  bool peek(T &);
+  template <typename... Args> bool emplace_back(Args &&...args);
+  size_t size() const;
   // Will work only in SPSC/MPSC why ?? [Reason this]
   // 7. Add static asserts
   // 8. Add emplace_back using perfect forwarding and variadic templates (you
