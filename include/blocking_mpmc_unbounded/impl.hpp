@@ -3,10 +3,10 @@
 
 #include "defs.hpp"
 
-template <typename T>
+// template <typename T>
 // using queue = tsfqueue::__impl::blocking_mpmc_unbounded<T>;
 
-template <typename T>
+template <typename T> 
 void tsfqueue::__impl::blocking_mpmc_unbounded<T>::push(T value)
 {
     static_assert(std::is_copy_constructible_v<T> ||
@@ -40,14 +40,12 @@ void tsfqueue::__impl::blocking_mpmc_unbounded<T>::push(T value)
 }
 
 template <typename T>
-queue<T>::node *tsfqueue::__impl::blocking_mpmc_unbounded<T>::get_tail()
+tsfqueue::__impl::blocking_mpmc_unbounded<T>::node *tsfqueue::__impl::blocking_mpmc_unbounded<T>::get_tail()
 {
     std::lock_guard<std::mutex> tail_lock(tail_mutex);
     return tail;
 }
 
-template <typename T>
-std::unique_ptr<queue<T>::node> queue<T>::wait_and_get() {}
 
 template <typename T>
 std::unique_ptr<typename tsfqueue::__impl::blocking_mpmc_unbounded<T>::node> tsfqueue::__impl::blocking_mpmc_unbounded<T>::try_get()
@@ -100,15 +98,50 @@ std::shared_ptr<T> tsfqueue::__impl::blocking_mpmc_unbounded<T>::try_pop()
         return removed_node->data;
     }
 }
+template <typename T>
+std::unique_ptr<typename tsfqueue::__impl::blocking_mpmc_unbounded<T>::node> tsfqueue::__impl::blocking_mpmc_unbounded<T>::wait_and_get() {
+  // Locking the head mutex
+  std::unique_lock<std::mutex> head_lock(head_mutex);
+
+  // Waiting for the queue to not be empty
+  cond.wait(head_lock, [this] { return !empty(); });
+
+  // Extracting the head node and updating it
+  std::unique_ptr<node> old_head = std::move(head);
+  head = std::move(old_head->next);
+
+  // Updating the queue size
+  {
+    std::lock_guard<std::mutex> size_lock(size_mutex);
+    size_q--;
+  }
+
+  return std::move(old_head);
+}
+
+template <typename T> void tsfqueue::__impl::blocking_mpmc_unbounded<T>::wait_and_pop(T &val) {
+  static_assert(std::is_copy_assignable_v<T> || std::is_move_assignable_v<T>,
+                "T must be copy-assignable or move-assignable to be popped "
+                "into a reference.");
+
+  // Obtain the front_node with the help of wait_and_get()
+  std::unique_ptr<node> front_node = wait_and_get();
+
+  // Move the data into value
+  val = *front_node->data; // Removed std::move() from here due to dangling
+                        
+}
+
+template <typename T> std::shared_ptr<T> tsfqueue::__impl::blocking_mpmc_unbounded<T>::wait_and_pop() {
+  // Obtain the front_node with the help of wait_and_get()
+  std::unique_ptr<node> front_node = wait_and_get();
+
+  // Return the shared pointer of the data
+  return front_node->data;
+}
 
 template <typename T>
-void queue<T>::wait_and_pop(T &value) {}
-
-template <typename T>
-std::shared_ptr<T> queue<T>::wait_and_pop() {}
-
-template <typename T>
-bool queue<T>::empty() {}
+bool tsfqueue::__impl::blocking_mpmc_unbounded<T>::empty() {}
 
 #endif
 
